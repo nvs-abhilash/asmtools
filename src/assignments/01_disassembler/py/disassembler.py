@@ -72,8 +72,11 @@ def disassembler(bytes, start, end):
             # memory mode, byte displacement
             reg = REGISTERS[(((bytes[start + 1] & 0b00111000) >> 3) << 1) | w]
             d8 = bytes[start + 2]
+            if d8 > 127:
+                d8 -= 256
+            d8str = f"+ {d8}" if d8 >= 0 else f"- {-d8}"
             skip += 1
-            rm = f"[{EFFECTIVE_ADDRESS[bytes[start + 1] & 0b00000111]} + {d8}]"
+            rm = f"[{EFFECTIVE_ADDRESS[bytes[start + 1] & 0b00000111]} {d8str}]"
             dst = reg if d == 1 else rm
             src = rm if d == 1 else reg
             instruction += f"{dst}, {src}"
@@ -91,9 +94,45 @@ def disassembler(bytes, start, end):
             raise NotImplementedError("Operation not implemented")
 
     elif bytes[start] & 0b11111110 == 0b11000110:
-        # immediate to registr/memory
-        return ""
-        raise NotImplementedError("Operation not implemented")
+        # immediate to register/memory
+        w = bytes[start] & 0b00000001
+        mod = (bytes[start + 1] & 0b11000000) >> 6
+        if mod == 0b00:
+            rm = f"[{EFFECTIVE_ADDRESS[bytes[start + 1] & 0b00000111]}]"
+            if EFFECTIVE_ADDRESS[bytes[start + 1] & 0b00000111] == "bp":
+                # direct address 16-bit displacement
+                rm = f"[{bytes[start + 2] + (bytes[start + 3] << 8)}]"
+                skip += 2
+            if w == 1:
+                data = bytes[start + skip] + (bytes[start + skip + 1] << 8)
+                skip += 2
+            else:
+                data = bytes[start + skip]
+                skip += 1
+            instruction += f"mov {rm}, {'word' if w == 1 else 'byte'} {data}"
+        elif mod == 0b01:
+            rm = f"[{EFFECTIVE_ADDRESS[bytes[start + 1] & 0b00000111]} + {bytes[start + 2]}]"
+            skip += 1
+            if w == 1:
+                data = bytes[start + 3] + (bytes[start + 4] << 8)
+                skip += 2
+            else:
+                data = bytes[start + 3]
+                skip += 1
+            instruction += f"mov {rm}, {'word' if w == 1 else 'byte'} {data}"
+        elif mod == 0b10:
+            rm = f"[{EFFECTIVE_ADDRESS[bytes[start + 1] & 0b00000111]} + {(bytes[start + 3] << 8) + bytes[start + 2]}]"
+            skip += 2
+            if w == 1:
+                data = bytes[start + 4] + (bytes[start + 5] << 8)
+                skip += 2
+            else:
+                data = bytes[start + 4]
+                skip += 1
+            instruction += f"mov {rm}, {'word' if w == 1 else 'byte'} {data}"
+        else:
+            raise NotImplementedError("Operation not implemented")
+
     elif bytes[start] & 0b11110000 == 0b10110000:
         # immediate to register
         w = (bytes[start] & 0b00001000) >> 3
@@ -101,9 +140,21 @@ def disassembler(bytes, start, end):
 
         data = bytes[start + 1]
         if w == 1:
-            data += bytes[start + 2] << 8
+            data += (bytes[start + 2] << 8)
             skip += 1
         instruction += f"mov {reg}, {data}"
+    elif bytes[start] & 0b11111110 == 0b10100000:
+        # memory to accumulator
+        address = bytes[start + 1] + (bytes[start + 2] << 8)
+        skip += 1
+        w = bytes[start] & 0b00000001
+        instruction += f"mov {'ax' if w == 1 else 'al'}, [{address}]"
+    elif bytes[start] & 0b11111110 == 0b10100010:
+        # accumulator to memory
+        address = bytes[start + 1] + (bytes[start + 2] << 8)
+        skip += 1
+        w = bytes[start] & 0b00000001
+        instruction += f"mov [{address}], {'ax' if w == 1 else 'al'}"
     else:
         return ""
         raise NotImplementedError("Operation not implemented")
