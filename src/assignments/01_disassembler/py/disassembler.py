@@ -60,6 +60,10 @@ def disassembler(bytes, start, end):
             # memory mode, no displacement*
             reg = REGISTERS[(((bytes[start + 1] & 0b00111000) >> 3) << 1) | w]
             rm = f"[{EFFECTIVE_ADDRESS[bytes[start + 1] & 0b00000111]}]"
+            if EFFECTIVE_ADDRESS[bytes[start + 1] & 0b00000111] == "bp":
+                # direct address 16-bit displacement
+                rm = f"[{bytes[start + 2] + (bytes[start + 3] << 8)}]"
+                skip += 2
 
             dst = reg if d == 1 else rm
             src = rm if d == 1 else reg
